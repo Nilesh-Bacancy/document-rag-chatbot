@@ -1,4 +1,5 @@
 <script setup>
+import { nextTick, ref, watch } from 'vue';
 import { Link, useForm } from '@inertiajs/vue3';
 
 const props = defineProps({
@@ -16,6 +17,18 @@ const form = useForm({
     question: '',
 });
 
+const messagesEl = ref(null);
+
+function scrollToBottom() {
+    nextTick(() => {
+        if (messagesEl.value) {
+            messagesEl.value.scrollTop = messagesEl.value.scrollHeight;
+        }
+    });
+}
+
+watch(() => props.messages.length, scrollToBottom, { immediate: true });
+
 function submit() {
     if (!form.question.trim()) {
         return;
@@ -29,13 +42,13 @@ function submit() {
 </script>
 
 <template>
-    <div class="mx-auto flex max-w-3xl flex-col p-6" style="min-height: 100vh">
-        <div class="mb-4">
+    <div class="mx-auto flex h-screen max-w-3xl flex-col p-6">
+        <div class="mb-4 shrink-0">
             <Link href="/documents" class="text-sm text-gray-500 hover:underline">&larr; Documents</Link>
             <h1 class="mt-1 text-xl font-semibold text-gray-900">{{ document.original_filename }}</h1>
         </div>
 
-        <div class="flex-1 space-y-4 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-4">
+        <div ref="messagesEl" class="min-h-0 flex-1 space-y-4 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-4">
             <p v-if="messages.length === 0" class="text-center text-sm text-gray-400">
                 Ask a question about this document to get started.
             </p>
@@ -50,9 +63,9 @@ function submit() {
             </div>
         </div>
 
-        <p v-if="form.errors.question" class="mt-2 text-sm text-red-600">{{ form.errors.question }}</p>
+        <p v-if="form.errors.question" class="mt-2 shrink-0 text-sm text-red-600">{{ form.errors.question }}</p>
 
-        <form @submit.prevent="submit" class="mt-4 flex gap-2">
+        <form @submit.prevent="submit" class="mt-4 flex shrink-0 gap-2">
             <input
                 v-model="form.question"
                 type="text"
