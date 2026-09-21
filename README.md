@@ -132,24 +132,27 @@ php artisan key:generate
 
 ## Environment variables
 
-Edit `.env`:
+`cp .env.example .env` already sets sensible defaults for everything except
+your database credentials and API key. What you actually need to fill in or
+change:
 
-```env
-DB_CONNECTION=mysql
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_DATABASE=document_rag_chatbot
-DB_USERNAME=root
-DB_PASSWORD=
+| Variable | Required? | What it's for |
+|---|---|---|
+| `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` | **Yes** | Point these at a MySQL database/user that exists on your machine (see "Database setup" below). `DB_HOST`/`DB_PORT` default to `127.0.0.1`/`3306`. |
+| `GEMINI_API_KEY` | **Yes** | Used for both embeddings and chat generation. Get one free at <https://aistudio.google.com/app/api-keys>. It's read only from the environment (`config/services.php`) — never hardcoded or sent to the frontend. Must be a Gemini key, not an OpenAI key (they're not interchangeable — see "Provider" note below). |
+| `GEMINI_EMBEDDING_MODEL` | No (has a default) | Defaults to `gemini-embedding-001`. Only change if Google renames/deprecates it. |
+| `GEMINI_CHAT_MODEL` | No (has a default) | Defaults to `gemini-flash-latest`, a stable alias that always points at Google's current fast/cheap model — safer than pinning a dated model name, which Google periodically deprecates. |
+| `QUEUE_CONNECTION` | No (has a default) | `database` by default (background processing via `php artisan queue:work`, see "Running the application"). Set to `sync` if you don't want to run a worker. |
+| `APP_KEY` | **Yes**, but auto-generated | Set by `php artisan key:generate` during install; don't set it by hand. |
 
-GEMINI_API_KEY=...
-GEMINI_EMBEDDING_MODEL=gemini-embedding-001
-GEMINI_CHAT_MODEL=gemini-flash-latest
-```
+Everything else in `.env.example` (session, cache, mail, etc.) is standard
+Laravel scaffolding you can leave as-is for local development.
 
-Get a Gemini API key at <https://aistudio.google.com/app/api-keys>. It is read
-only from the environment (`config/services.php`) — never hardcoded or sent
-to the frontend.
+> **Provider note:** this app calls Google's Gemini API, not OpenAI. A key
+> from <https://platform.openai.com> (format `sk-...`) will not work here —
+> you specifically need a Gemini key from Google AI Studio (format
+> `AQ...`/similar). Pasting the wrong kind of key produces a `401 Incorrect
+> API key` error when a document is processed.
 
 ## Database setup
 
@@ -185,6 +188,13 @@ Then open the app (default `http://127.0.0.1:8000`).
 > or Redis via `QUEUE_CONNECTION=redis`) once processing time becomes
 > noticeable.
 
+> **Restart the worker after changing PHP code.** `php artisan queue:work`
+> is a long-running process — it loads your service classes into memory
+> once and keeps running, so editing e.g. `EmbeddingService.php` while a
+> worker is already running has no effect until you stop (Ctrl+C) and
+> restart it, or run `php artisan queue:restart`. Forgetting this looks
+> like the code change "didn't work" when it actually just isn't loaded yet.
+
 ## How document processing works
 
 1. `DocumentController::store()` validates the upload (PDF only, ≤10MB),
@@ -202,6 +212,13 @@ Then open the app (default `http://127.0.0.1:8000`).
 4. The Documents page polls the server every few seconds while anything is
    pending/processing, so the status updates automatically.
 
+## Removing a document
+
+Click "Remove" next to a document on the Documents page. This deletes the
+stored PDF file, the `documents` row, and everything derived from it
+(`document_chunks`, `conversations`, `messages`) via cascading foreign keys —
+see `DocumentController::destroy()`.
+
 ## How chat works
 
 1. `ChatController::show()` renders the chat page for a document, loading
@@ -215,6 +232,15 @@ Then open the app (default `http://127.0.0.1:8000`).
    `LlmService::generate()`.
 4. The answer is saved as an `assistant` message and the page reloads with
    the updated conversation.
+
+The chat page (`resources/js/Pages/Chat/Show.vue`) fills the browser
+viewport: only the message list scrolls (auto-scrolling to the latest
+message), while the header and question input stay fixed in place.
+
+If a session/CSRF token expires (e.g. a tab left open a long time), the app
+reloads the current page automatically instead of showing Laravel's raw
+"419 | Page Expired" screen — see the `router.on('invalid', ...)` handler in
+`resources/js/app.js`.
 
 ## Example question/answer
 
