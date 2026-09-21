@@ -14,7 +14,7 @@ Built with Laravel 11, Vue 3, and Inertia.js.
    storing everything in MySQL.
 3. You ask a question in the chat UI.
 4. The app embeds your question, finds the most similar chunks, and sends
-   them to an LLM (OpenAI) along with your question.
+   them to an LLM (Google Gemini) along with your question.
 5. The LLM answers **using only the document's content**. If the answer
    isn't in the document, it says so instead of guessing.
 
@@ -51,7 +51,7 @@ flowchart TD
         E -.read.-> H
         H --> I[Top-N relevant chunks]
         I --> J[RagService<br/>Build prompt with context]
-        J --> K[LlmService<br/>OpenAI Chat Completion]
+        J --> K[LlmService<br/>Gemini generateContent]
         K --> L[Answer]
     end
 ```
@@ -82,9 +82,9 @@ Controller -> FormRequest -> Service -> Model / External API
 - `app/Http/Requests/UploadDocumentRequest.php`, `ChatRequest.php` — validation.
 - `app/Services/DocumentParserService.php` — PDF -> plain text.
 - `app/Services/ChunkingService.php` — plain text -> chunks.
-- `app/Services/EmbeddingService.php` — text -> embedding vector (OpenAI).
+- `app/Services/EmbeddingService.php` — text -> embedding vector (Gemini).
 - `app/Services/VectorSearchService.php` — embedding -> top-N similar chunks.
-- `app/Services/LlmService.php` — prompt -> generated answer (OpenAI).
+- `app/Services/LlmService.php` — prompt -> generated answer (Gemini).
 - `app/Services/RagService.php` — orchestrates the full chat flow above.
 - `app/Jobs/ProcessDocumentJob.php` — runs the ingestion flow in the background.
 - `app/Models/{Document,DocumentChunk,Conversation,Message}.php`.
@@ -116,7 +116,7 @@ of the app only depends on its public `search()` method.
 - **Vue 3** (Composition API, `<script setup>`) + **Inertia.js** — frontend, no separate API/SPA needed.
 - **MySQL** — stores documents, chunks (+ embeddings as JSON), conversations, messages.
 - **Laravel Queue** (`database` driver) — processes uploaded PDFs in the background.
-- **OpenAI API** — `text-embedding-3-small` for embeddings, `gpt-4o-mini` for chat generation.
+- **Google Gemini API** — `gemini-embedding-001` for embeddings, `gemini-flash-latest` for chat generation.
 - **smalot/pdfparser** — PDF text extraction.
 - **Tailwind CSS** — minimal styling.
 
@@ -142,12 +142,12 @@ DB_DATABASE=document_rag_chatbot
 DB_USERNAME=root
 DB_PASSWORD=
 
-OPENAI_API_KEY=sk-...
-OPENAI_EMBEDDING_MODEL=text-embedding-3-small
-OPENAI_CHAT_MODEL=gpt-4o-mini
+GEMINI_API_KEY=...
+GEMINI_EMBEDDING_MODEL=gemini-embedding-001
+GEMINI_CHAT_MODEL=gemini-flash-latest
 ```
 
-Get an OpenAI API key at <https://platform.openai.com/api-keys>. It is read
+Get a Gemini API key at <https://aistudio.google.com/app/api-keys>. It is read
 only from the environment (`config/services.php`) — never hardcoded or sent
 to the frontend.
 
@@ -194,7 +194,7 @@ Then open the app (default `http://127.0.0.1:8000`).
 2. The job sets `status: processing`, then runs:
    - `DocumentParserService::extractText()` — pulls plain text out of the PDF.
    - `ChunkingService::chunk()` — splits it into ~1000-character overlapping chunks.
-   - `EmbeddingService::embedBatch()` — embeds all chunks in one OpenAI API call.
+   - `EmbeddingService::embedBatch()` — embeds all chunks in one Gemini API call.
    - Saves each chunk + its embedding to `document_chunks`.
 3. On success, `status` becomes `completed`; on any failure, `status`
    becomes `failed` with a user-friendly `error_message` (the technical

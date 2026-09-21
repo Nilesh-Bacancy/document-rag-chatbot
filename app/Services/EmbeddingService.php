@@ -15,14 +15,14 @@ use RuntimeException;
  * space. This is what lets us find "relevant" chunks later by comparing
  * numbers instead of matching keywords.
  *
- * This service calls OpenAI's Embeddings API to turn a piece of text into
- * its vector. It's used both for document chunks (once, when the document
- * is processed) and for the user's question (once per question, at search
- * time).
+ * This service calls Google's Gemini Embeddings API to turn a piece of text
+ * into its vector. It's used both for document chunks (once, when the
+ * document is processed) and for the user's question (once per question,
+ * at search time).
  */
 class EmbeddingService
 {
-    private const ENDPOINT = 'https://api.openai.com/v1/embeddings';
+    private const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/%s:batchEmbedContents';
 
     /**
      * Convert a single piece of text into its embedding vector.
@@ -43,21 +43,27 @@ class EmbeddingService
      */
     public function embedBatch(array $texts): array
     {
-        $apiKey = config('services.openai.api_key');
+        $apiKey = config('services.gemini.api_key');
 
         if (empty($apiKey)) {
-            throw new RuntimeException('OPENAI_API_KEY is not configured.');
+            throw new RuntimeException('GEMINI_API_KEY is not configured.');
         }
 
-        $response = Http::withToken($apiKey)
+        $model = config('services.gemini.embedding_model');
+
+        $requests = array_map(fn (string $text) => [
+            'model' => "models/{$model}",
+            'content' => ['parts' => [['text' => $text]]],
+        ], $texts);
+
+        $response = Http::withHeader('x-goog-api-key', $apiKey)
             ->timeout(60)
-            ->post(self::ENDPOINT, [
-                'model' => config('services.openai.embedding_model'),
-                'input' => $texts,
+            ->post(sprintf(self::ENDPOINT, $model), [
+                'requests' => $requests,
             ]);
 
         if ($response->failed()) {
-            Log::error('OpenAI embeddings request failed', [
+            Log::error('Gemini embeddings request failed', [
                 'status' => $response->status(),
                 'body' => $response->body(),
             ]);
@@ -65,12 +71,9 @@ class EmbeddingService
             throw new RuntimeException('Failed to generate embeddings. Please try again later.');
         }
 
-        // The API returns results in the same order as the input texts.
-        $data = collect($response->json('data'))
-            ->sortBy('index')
-            ->pluck('embedding')
+        // The API returns embeddings in the same order as the input requests.
+        return collect($response->json('embeddings'))
+            ->pluck('values')
             ->all();
-
-        return $data;
     }
 }
