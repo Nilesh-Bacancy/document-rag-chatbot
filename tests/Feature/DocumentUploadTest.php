@@ -51,4 +51,18 @@ class DocumentUploadTest extends TestCase
 
         $response->assertSessionHasErrors('document');
     }
+
+    public function test_a_document_can_be_removed_along_with_its_stored_file(): void
+    {
+        Storage::fake('local');
+        Storage::disk('local')->put('documents/removable.pdf', 'fake pdf contents');
+
+        $document = Document::factory()->create(['file_path' => 'documents/removable.pdf']);
+
+        $response = $this->delete("/documents/{$document->id}");
+
+        $response->assertRedirect('/documents');
+        $this->assertDatabaseMissing('documents', ['id' => $document->id]);
+        Storage::disk('local')->assertMissing('documents/removable.pdf');
+    }
 }

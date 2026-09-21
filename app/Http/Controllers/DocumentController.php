@@ -6,6 +6,7 @@ use App\Http\Requests\UploadDocumentRequest;
 use App\Jobs\ProcessDocumentJob;
 use App\Models\Document;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
@@ -43,6 +44,18 @@ class DocumentController extends Controller
         ]);
 
         ProcessDocumentJob::dispatch($document);
+
+        return redirect()->route('documents.index');
+    }
+
+    /**
+     * Remove a document, its stored PDF, and everything derived from it
+     * (chunks, conversations, messages cascade via foreign keys).
+     */
+    public function destroy(Document $document): RedirectResponse
+    {
+        Storage::disk('local')->delete($document->file_path);
+        $document->delete();
 
         return redirect()->route('documents.index');
     }

@@ -50,6 +50,14 @@ function statusLabel(status) {
         failed: 'Failed',
     }[status] ?? status;
 }
+
+function remove(doc) {
+    if (!confirm(`Remove "${doc.original_filename}"? This also deletes its chat history.`)) {
+        return;
+    }
+
+    router.delete(`/documents/${doc.id}`, { preserveScroll: true });
+}
 </script>
 
 <template>
@@ -102,7 +110,7 @@ function statusLabel(status) {
                             {{ doc.error_message }}
                         </span>
                     </td>
-                    <td class="py-3 text-right">
+                    <td class="py-3 text-right whitespace-nowrap">
                         <Link
                             v-if="doc.status === 'completed'"
                             :href="`/documents/${doc.id}/chat`"
@@ -110,6 +118,13 @@ function statusLabel(status) {
                         >
                             Open chat
                         </Link>
+                        <button
+                            type="button"
+                            class="ml-4 text-sm font-medium text-red-600 hover:underline"
+                            @click="remove(doc)"
+                        >
+                            Remove
+                        </button>
                     </td>
                 </tr>
                 <tr v-if="documents.length === 0">
