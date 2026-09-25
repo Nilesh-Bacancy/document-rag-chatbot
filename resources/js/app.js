@@ -8,7 +8,7 @@ import { createInertiaApp, router } from '@inertiajs/vue3';
 // time), Inertia would otherwise dump the raw Laravel "419 | PAGE EXPIRED"
 // page. Reload instead, so the user just lands back on a fresh page with a
 // valid token rather than seeing a broken screen.
-router.on('invalid', (event) => {
+router.on('httpException', (event) => {
     if (event.detail.response?.status === 419) {
         event.preventDefault();
         window.location.reload();
