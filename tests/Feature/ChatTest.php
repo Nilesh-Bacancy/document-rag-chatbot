@@ -52,6 +52,24 @@ class ChatTest extends TestCase
         ]);
     }
 
+    public function test_a_failed_answer_does_not_store_the_question(): void
+    {
+        $document = Document::factory()->create(['status' => Document::STATUS_COMPLETED]);
+
+        $this->mock(RagService::class, function ($mock) {
+            $mock->shouldReceive('ask')
+                ->once()
+                ->andThrow(new \RuntimeException('Failed to generate an answer. Please try again later.'));
+        });
+
+        $response = $this->post("/documents/{$document->id}/chat", [
+            'question' => 'How many casual leaves are allowed?',
+        ]);
+
+        $response->assertSessionHasErrors('question');
+        $this->assertDatabaseCount('messages', 0);
+    }
+
     protected function tearDown(): void
     {
         Mockery::close();

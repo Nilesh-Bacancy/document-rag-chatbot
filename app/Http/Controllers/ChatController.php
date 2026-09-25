@@ -43,16 +43,19 @@ class ChatController extends Controller
         $conversation = $document->conversations()->firstOrCreate([]);
         $question = $request->validated('question');
 
-        $conversation->messages()->create([
-            'role' => Message::ROLE_USER,
-            'content' => $question,
-        ]);
-
         try {
             $answer = $ragService->ask($document, $question);
         } catch (RuntimeException $e) {
             return back()->withErrors(['question' => $e->getMessage()]);
         }
+
+        // Store the question only once it has an answer, so a failed
+        // generation doesn't leave an unanswered question in the history
+        // (the frontend puts it back in the input for a retry instead).
+        $conversation->messages()->create([
+            'role' => Message::ROLE_USER,
+            'content' => $question,
+        ]);
 
         $conversation->messages()->create([
             'role' => Message::ROLE_ASSISTANT,

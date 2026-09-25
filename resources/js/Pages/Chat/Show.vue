@@ -19,6 +19,14 @@ const form = useForm({
 
 const messagesEl = ref(null);
 
+// The question being answered right now. It's shown straight away as a chat
+// bubble (with a typing indicator under it) so the user can see their message
+// was sent, instead of staring at a disabled input until the answer arrives.
+const pendingQuestion = ref(null);
+
+// The last question that failed, so it can be retried with one click.
+const failedQuestion = ref(null);
+
 function scrollToBottom() {
     nextTick(() => {
         if (messagesEl.value) {
@@ -29,15 +37,44 @@ function scrollToBottom() {
 
 watch(() => props.messages.length, scrollToBottom, { immediate: true });
 
-function submit() {
-    if (!form.question.trim()) {
-        return;
-    }
+function send(question) {
+    pendingQuestion.value = question;
+    failedQuestion.value = null;
+    form.question = question;
+    scrollToBottom();
 
     form.post(`/documents/${props.document.id}/chat`, {
         preserveScroll: true,
-        onSuccess: () => form.reset('question'),
+        onStart: () => {
+            // Clear the input right away, like ChatGPT; the question now
+            // lives in the pending bubble. (The request data is already
+            // captured by this point, so this doesn't affect what's sent.)
+            form.question = '';
+        },
+        onError: () => {
+            failedQuestion.value = question;
+        },
+        onFinish: () => {
+            pendingQuestion.value = null;
+            scrollToBottom();
+        },
     });
+}
+
+function submit() {
+    const question = form.question.trim();
+
+    if (!question || form.processing) {
+        return;
+    }
+
+    send(question);
+}
+
+function retry() {
+    if (failedQuestion.value && !form.processing) {
+        send(failedQuestion.value);
+    }
 }
 </script>
 
@@ -49,7 +86,7 @@ function submit() {
         </div>
 
         <div ref="messagesEl" class="min-h-0 flex-1 space-y-4 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-4">
-            <p v-if="messages.length === 0" class="text-center text-sm text-gray-400">
+            <p v-if="messages.length === 0 && !pendingQuestion && !failedQuestion" class="text-center text-sm text-gray-400">
                 Ask a question about this document to get started.
             </p>
 
@@ -61,9 +98,35 @@ function submit() {
                     {{ message.content }}
                 </div>
             </div>
+
+            <template v-if="pendingQuestion || failedQuestion">
+                <div class="flex justify-end">
+                    <div
+                        class="max-w-[80%] rounded-lg bg-gray-900 px-4 py-2 text-sm whitespace-pre-wrap text-white"
+                        :class="{ 'opacity-60': failedQuestion && !pendingQuestion }"
+                    >
+                        {{ pendingQuestion || failedQuestion }}
+                    </div>
+                </div>
+
+                <div v-if="pendingQuestion" class="flex justify-start">
+                    <div class="flex items-center gap-1 rounded-lg bg-white px-4 py-3 shadow-sm" aria-label="Assistant is typing">
+                        <span class="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:-0.3s]"></span>
+                        <span class="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:-0.15s]"></span>
+                        <span class="h-2 w-2 animate-bounce rounded-full bg-gray-400"></span>
+                    </div>
+                </div>
+
+                <div v-else-if="form.errors.question" class="flex justify-start">
+                    <div class="max-w-[80%] rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+                        {{ form.errors.question }}
+                        <button type="button" class="ml-2 font-medium underline hover:no-underline" @click="retry">Retry</button>
+                    </div>
+                </div>
+            </template>
         </div>
 
-        <p v-if="form.errors.question" class="mt-2 shrink-0 text-sm text-red-600">{{ form.errors.question }}</p>
+        <p v-if="form.errors.question && !failedQuestion" class="mt-2 shrink-0 text-sm text-red-600">{{ form.errors.question }}</p>
 
         <form @submit.prevent="submit" class="mt-4 flex shrink-0 gap-2">
             <input
@@ -71,14 +134,13 @@ function submit() {
                 type="text"
                 placeholder="Ask a question..."
                 class="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900"
-                :disabled="form.processing"
             />
             <button
                 type="submit"
                 class="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
                 :disabled="form.processing || !form.question.trim()"
             >
-                {{ form.processing ? 'Thinking…' : 'Send' }}
+                Send
             </button>
         </form>
     </div>
