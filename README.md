@@ -142,6 +142,7 @@ change:
 | `GEMINI_API_KEY` | **Yes** | Used for both embeddings and chat generation. Get one free at <https://aistudio.google.com/app/api-keys>. It's read only from the environment (`config/services.php`) — never hardcoded or sent to the frontend. Must be a Gemini key, not an OpenAI key (they're not interchangeable — see "Provider" note below). |
 | `GEMINI_EMBEDDING_MODEL` | No (has a default) | Defaults to `gemini-embedding-001`. Only change if Google renames/deprecates it. |
 | `GEMINI_CHAT_MODEL` | No (has a default) | Defaults to `gemini-flash-latest`, a stable alias that always points at Google's current fast/cheap model — safer than pinning a dated model name, which Google periodically deprecates. |
+| `GEMINI_CHAT_FALLBACK_MODEL` | No (has a default) | Defaults to `gemini-flash-lite-latest`. Used only when the main chat model is overloaded (503/429/5xx) even after retries, so a busy model doesn't turn into a failed answer. |
 | `QUEUE_CONNECTION` | No (has a default) | `database` by default (background processing via `php artisan queue:work`, see "Running the application"). Set to `sync` if you don't want to run a worker. |
 | `APP_KEY` | **Yes**, but auto-generated | Set by `php artisan key:generate` during install; don't set it by hand. |
 

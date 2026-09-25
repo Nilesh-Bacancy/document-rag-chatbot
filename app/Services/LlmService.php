@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -29,10 +31,44 @@ class LlmService
             throw new RuntimeException('GEMINI_API_KEY is not configured.');
         }
 
-        $model = config('services.gemini.chat_model');
+        $models = array_unique(array_filter([
+            config('services.gemini.chat_model'),
+            config('services.gemini.chat_fallback_model'),
+        ]));
 
-        $response = Http::withHeader('x-goog-api-key', $apiKey)
+        foreach ($models as $model) {
+            $response = $this->request($apiKey, $model, $systemPrompt, $userPrompt);
+
+            if ($response->successful()) {
+                return trim((string) $response->json('candidates.0.content.parts.0.text'));
+            }
+
+            Log::error('Gemini generateContent request failed', [
+                'model' => $model,
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+
+            // Only an overloaded/rate-limited model is worth falling back
+            // from; anything else (bad key, bad request) will fail the same
+            // way on every model.
+            if (! $this->isTransient($response->status())) {
+                break;
+            }
+        }
+
+        throw new RuntimeException('Failed to generate an answer. Please try again later.');
+    }
+
+    /**
+     * Call generateContent on one model, retrying briefly when Gemini is
+     * overloaded (these 503s usually clear within a few seconds).
+     */
+    private function request(string $apiKey, string $model, string $systemPrompt, string $userPrompt): Response
+    {
+        return Http::withHeader('x-goog-api-key', $apiKey)
             ->timeout(60)
+            ->retry(3, 1000, fn ($e) => $e instanceof RequestException && $this->isTransient($e->response->status()), throw: false)
             ->post(sprintf(self::ENDPOINT, $model), [
                 'systemInstruction' => [
                     'parts' => [['text' => $systemPrompt]],
@@ -44,16 +80,10 @@ class LlmService
                     'temperature' => 0.2,
                 ],
             ]);
+    }
 
-        if ($response->failed()) {
-            Log::error('Gemini generateContent request failed', [
-                'status' => $response->status(),
-                'body' => $response->body(),
-            ]);
-
-            throw new RuntimeException('Failed to generate an answer. Please try again later.');
-        }
-
-        return trim((string) $response->json('candidates.0.content.parts.0.text'));
+    private function isTransient(int $status): bool
+    {
+        return $status === 429 || $status >= 500;
     }
 }
